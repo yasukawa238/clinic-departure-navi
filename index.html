@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14263C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>診察出発ナビ V0.1</title>
+<style>
+:root{--ink:#14263c;--muted:#5e7183;--bg:#f3f6fa;--line:#dce5ee;--accent:#1f6de2;--green:#117b58;--orange:#ae6a05;--red:#c23939}
+*{box-sizing:border-box}body{margin:0;padding:0 0 calc(32px + env(safe-area-inset-bottom));font:15px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:var(--ink);background:var(--bg)}
+header{background:#14263c;color:#fff;padding:calc(env(safe-area-inset-top) + 16px) 18px 18px}
+header h1{font-size:20px;margin:0;letter-spacing:.03em}header .subtitle{font-size:12px;color:#c2cfdf;margin:4px 0 0}
+main{padding:15px;max-width:790px;margin:auto}.card{background:#fff;padding:17px;border:1px solid var(--line);border-radius:18px;box-shadow:0 4px 13px #192f4608;margin-bottom:13px}
+h2{font-size:16px;margin:0 0 13px}.heading{display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.subtle,.help{color:var(--muted);font-size:12px}.help{line-height:1.75;margin:8px 0}.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:#eff5fc;border-radius:13px;padding:13px 12px}.stat .name{display:block;color:#5c7188;font-size:12px}.stat strong{font-size:34px;font-variant-numeric:tabular-nums}.unit{font-size:14px;font-weight:500}
+.pill{border-radius:99px;background:#e6eef8;color:#33649a;padding:5px 10px;font-weight:700;font-size:11px}.pill.success{background:#dff3e8;color:#126a4c}.pill.warning{background:#fff0d6;color:#925700}.pill.error{background:#fbe5e5;color:#a42727}
+.banner{margin-top:12px;padding:16px;border-radius:13px;background:#eaf6ee}.banner.warning{background:#fff3db}.banner.error{background:#ffebeb}.banner.neutral{background:#eff3f7}
+.banner h3{font-size:14px;margin:0}.banner .big{font-size:28px;font-weight:800;line-height:1.45;margin:3px 0;font-variant-numeric:tabular-nums}.banner p{font-size:12px;margin:2px 0;color:#3d5265}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}.cols .value{font-weight:750;font-size:20px;font-variant-numeric:tabular-nums}
+button,.button{display:inline-flex;justify-content:center;align-items:center;text-decoration:none;min-height:43px;border:0;border-radius:11px;background:var(--accent);color:white;padding:10px 13px;font:inherit;font-weight:700;cursor:pointer;touch-action:manipulation}
+button.secondary,.button.secondary{background:#e6effa;color:#244b78}button.danger{background:#a83a3a}button:disabled{opacity:.45;cursor:default}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.actions>*{flex:1 1 140px}
+label.field{font-size:12px;display:block;font-weight:700;margin:13px 0 5px}input[type=number],input[type=text],input[type=password],input[type=url],select{font:inherit;font-size:16px;border:1px solid #b8c9d9;border-radius:10px;min-height:43px;width:100%;padding:9px;color:var(--ink);background:white}
+input:focus-visible,button:focus-visible{outline:2px solid #4795ea;outline-offset:2px}.fieldgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 1px;border-bottom:1px solid #eaf0f4;font-size:14px}.toggle input{width:22px;height:22px;accent-color:#13785c;flex-shrink:0}
+.info{margin-top:12px;padding:11px;border-radius:10px;background:#eff5fc;color:#3a5771;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.info.error{background:#fce9e9;color:#972a2a}.info.success{background:#e3f6ed;color:#1b6c4e}
+table{width:100%;border-collapse:collapse;font-size:12px}td,th{text-align:left;border-bottom:1px solid #e4ebf0;padding:9px 5px}th{color:#61768c}
+details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:#1c64ba}.noshow{display:none!important}
+@media(max-width:350px){.fieldgrid{grid-template-columns:1fr}.stat strong{font-size:27px}.card{padding:13px}}
+</style>
+</head>
+<body>
+<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.1</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
+<main>
+<section class="card" id="connectCard">
+  <h2>Supabaseへの接続</h2>
+  <p class="help">別に作成した「診察出発ナビ用」のSupabaseプロジェクトを指定します。MergeNAVIのURLは使用しません。</p>
+  <label class="field" for="projectURL">Project URL</label>
+  <input id="projectURL" type="url" placeholder="https://xxxxx.supabase.co" autocapitalize="none" spellcheck="false">
+  <label class="field" for="appCode">アプリアクセスコード（16文字以上）</label>
+  <input id="appCode" type="password" placeholder="SupabaseのCLINIC_APP_CODEと同じ値" autocomplete="off" autocapitalize="none" spellcheck="false">
+  <p class="help">アクセスコードはこのタブのセッション中のみ保存します。GitHubのHTMLやURLに直接書き込まないでください。</p>
+  <div class="actions"><button id="connectButton">接続を確認</button><button class="secondary" id="disconnectButton">接続情報をクリア</button></div>
+  <div id="connectResult" class="info">未接続（画面の表示確認は接続前でも可能です）</div>
+</section>
+<section class="card">
+  <div class="heading"><h2 style="margin:0">診察状況</h2><span id="pill" class="pill">未接続</span></div>
+  <p class="help" id="dataTimes">最終取得：— ／ 病院側の情報時刻：—</p>
+  <div class="stats">
+    <div class="stat"><span class="name">現在診察中</span><strong id="nowNo">—</strong><span class="unit"> 番</span></div>
+    <div class="stat"><span class="name">自分の番号まで</span><strong id="gapNo">—</strong><span class="unit"> 番</span></div>
+  </div>
+  <div id="departure" class="banner neutral"><h3>出発判断</h3><div class="big">設定待ち</div><p>Supabaseに接続し、自分の受付番号を設定してください。</p></div>
+  <div class="cols" style="margin-top:14px">
+    <div><div class="subtle">診察までの予測</div><div class="value" id="eta">—</div></div>
+    <div><div class="subtle">車の所要時間</div><div class="value" id="drive">—</div></div>
+    <div><div class="subtle">推奨出発時刻（JST）</div><div class="value" id="leaveTime">—</div></div>
+    <div><div class="subtle">現在の取得周期</div><div class="value" id="cycle">—</div></div>
+  </div>
+  <p class="help" id="nextUpdate">次回取得：—</p>
+  <div class="actions"><button id="start">監視開始</button><button class="danger" id="stop">停止</button><button class="secondary" id="refresh">今すぐ番号取得</button></div>
+  <div class="actions"><a class="button secondary" target="_blank" rel="noopener" href="https://k.inet489.jp/tmmr3345/yoyaku/todayinfo.cgi">病院公式ページ</a><a class="button secondary" id="maps" target="_blank" rel="noopener">Googleマップでナビ</a></div>
+  <div class="info" id="message">監視は通院する日のみONにします。休診日（木・日）は取得しません。</div>
+</section>
+<section class="card">
+  <details open><summary>受付番号・車移動の設定</summary>
+    <div class="fieldgrid">
+      <div><label class="field" for="my_number">自分の受付番号</label><input type="number" id="my_number" min="1" max="9999" inputmode="numeric"></div>
+      <div><label class="field" for="driving_minutes">車の所要時間（分）</label><input type="number" id="driving_minutes" min="1" max="240" inputmode="numeric"></div>
+      <div><label class="field" for="margin_minutes">到着余裕時間（分）</label><input type="number" id="margin_minutes" min="0" max="120" inputmode="numeric"></div>
+      <div><label class="field" for="fallback_pace">暫定ペース（分/番）</label><input type="number" id="fallback_pace" min="0.25" max="20" step="0.25" inputmode="decimal"></div>
+    </div>
+    <label class="field" for="origin">車での出発地点（住所・施設名・緯度,経度）</label>
+    <input id="origin" type="text" placeholder="例：静岡県三島市〇〇" autocomplete="street-address">
+    <div class="actions"><button class="secondary" id="geo">現在地を出発地点に設定</button><button id="saveMain">設定を保存</button></div>
+    <p class="help">現在地はボタンを押した時だけ取得します。画面ロック中の連続GPS取得は行いません。</p>
+  </details>
+</section>
+<section class="card">
+  <details><summary>番号取得の自動切替・休診日</summary>
+    <label class="toggle">残り番号で周期を短縮<input id="adaptive_numbers" type="checkbox"></label>
+    <label class="toggle">出発時刻が近いと周期を短縮<input id="adaptive_departure" type="checkbox"></label>
+    <label class="toggle">木曜・日曜は取得しない<input id="closed_day_guard" type="checkbox"></label>
+    <div class="fieldgrid">
+      <div><label class="field" for="normal_cycle">通常周期（分）</label><input id="normal_cycle" type="number" min="3" max="120"></div>
+      <div><label class="field" for="mid_cycle">中間周期（分）</label><input id="mid_cycle" type="number" min="3" max="120"></div>
+      <div><label class="field" for="near_cycle">近接時周期（分）</label><input id="near_cycle" type="number" min="3" max="120"></div>
+      <div><label class="field" for="middle_threshold">中間切替（残り番数）</label><input id="middle_threshold" type="number" min="2" max="9999"></div>
+      <div><label class="field" for="near_threshold">近接切替（残り番数）</label><input id="near_threshold" type="number" min="1" max="9998"></div>
+      <div><label class="field" for="departure_threshold">出発まで○分で短縮</label><input id="departure_threshold" type="number" min="1" max="180"></div>
+    </div>
+    <p class="help">初期値：通常10分、30番以内5分、10番以内3分。いずれも最短3分。手動取得にも同じ制限が適用されます。</p>
+    <button id="saveCycles">周期設定を保存</button>
+  </details>
+</section>
+<section class="card">
+  <details><summary>渋滞連携（Google Routes API・任意）</summary>
+    <label class="toggle">渋滞込み時間を自動更新<input id="traffic_enabled" type="checkbox"></label>
+    <p class="help">Supabase側に `GOOGLE_ROUTES_API_KEY` を設定してから利用できます。更新は10分以上間隔を空けます。API課金が発生する場合があります。</p>
+    <div class="actions"><button id="saveTraffic">設定を保存</button><button class="secondary" id="route">所要時間を更新</button></div>
+    <p id="trafficInfo" class="help">API未設定時は手入力値を使用します。</p>
+  </details>
+</section>
+<section class="card">
+  <details><summary>診察番号の履歴</summary>
+    <div style="overflow:auto"><table><thead><tr><th>取得時刻（JST）</th><th>区分</th><th>番号</th></tr></thead><tbody id="history"><tr><td colspan="3">まだデータがありません。</td></tr></tbody></table></div>
+  </details>
+</section>
+<p class="help">非公式の診察予測補助ツールです。病院公式の呼出案内が優先されます。診察の進行や交通状況が変化するため、表示時刻は保証されません。V0.1ではiPhoneへのPush通知は未実装です。</p>
+</main>
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const fields=['my_number','driving_minutes','margin_minutes','fallback_pace','origin','adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled','normal_cycle','mid_cycle','near_cycle','middle_threshold','near_threshold','departure_threshold'];
+const checkbox=new Set(['adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled']);
+let info=null,busy=false,connected=false;
+const fmt=val=>val?new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(val)):'—';
+const timestamp=minutes=>fmt(new Date(Date.now()+minutes*60000));
+function loadConnection(){
+  $('projectURL').value=localStorage.getItem('clinic_project_url')||'';
+  $('appCode').value=sessionStorage.getItem('clinic_app_code')||'';
+}
+function getEndpoint(){const base=$('projectURL').value.trim().replace(/\/$/,'');
+  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(base))throw Error('正しいSupabase Project URLを入力してください');
+  if($('appCode').value.trim().length<16)throw Error('アクセスコードは16文字以上で入力してください');
+  return base+'/functions/v1/clinic-nav';}
+async function call(action,extra={}){
+  if(busy)throw Error('処理中です');
+  const endpoint=getEndpoint();
+  busy=true;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+  try{
+    const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-App-Code':$('appCode').value.trim()},body:JSON.stringify({action,...extra}),signal:controller.signal,cache:'no-store'});
+    const body=await res.json();if(!res.ok||!body.ok)throw Error(body.message||`HTTP ${res.status}`);
+    sessionStorage.setItem('clinic_app_code',$('appCode').value.trim());
+    localStorage.setItem('clinic_project_url',$('projectURL').value.trim().replace(/\/$/,''));
+    connected=true;return body;
+  }finally{clearTimeout(timeout);busy=false;}
+}
+function showMessage(message,type=''){$('message').className='info '+type;$('message').textContent=message;}
+function showConnect(message,type=''){$('connectResult').className='info '+type;$('connectResult').textContent=message;}
+function applySettings(c){fields.forEach(k=>{if(Object.hasOwn(c,k)){
+  if(checkbox.has(k))$(k).checked=!!c[k];else $(k).value=c[k]??'';
+}});}
+function values(){const o={};fields.forEach(k=>{
+  if(checkbox.has(k))o[k]=$(k).checked;
+  else if(k==='origin')o[k]=$(k).value.trim();
+  else if(k==='my_number')o[k]=$(k).value?Number($(k).value):null;
+  else o[k]=Number($(k).value);
+});
+if(o.near_threshold>=o.middle_threshold)throw Error('最短周期への切替番号は、中間周期への切替番号より小さくしてください');
+return o;}
+function render(){if(!info)return;
+  const c=info.settings,s=info.status;
+  $('pill').className='pill '+(s.closed_day?'warning':s.stale||s.last_error?'error':c.active?'success':'');
+  $('pill').textContent=s.closed_day?'休診日':s.stale?'情報が古い':c.active?'監視中':'監視停止';
+  $('nowNo').textContent=s.current_number??'—'; $('gapNo').textContent=s.remaining??'—';
+  $('dataTimes').textContent=`最終取得：${fmt(s.last_success_at)} ／ 病院側の情報時刻：${s.source_time||'不明'} ／ ${s.source_session||'区分不明'}`;
+  $('drive').textContent=`${c.driving_minutes}分`;
+  $('eta').textContent=s.eta_minutes==null?'—':`約${s.eta_minutes}分`;
+  $('cycle').textContent=`${s.cycle_minutes}分`;
+  $('leaveTime').textContent=s.until_departure_minutes==null?'—':timestamp(s.until_departure_minutes);
+  $('nextUpdate').textContent=s.next_fetch_after?`次回取得可能：${fmt(s.next_fetch_after)}（病院へのアクセスは3分以上間隔を空けます）`:'初回取得待ち';
+  const panel=$('departure');panel.className='banner neutral';
+  let title='設定待ち',large='—',detail='自分の受付番号を設定し、監視を開始してください。';
+  if(s.closed_day){title='休診日';large='取得停止';detail='木曜日・日曜日は病院サイトを取得しません。';panel.className='banner neutral';}
+  else if(s.stale||s.last_error){title='取得状態を確認';large='予測の信頼性低下';detail='病院公式サイトで現在の番号を確認してください。';panel.className='banner error';}
+  else if(s.remaining!==null){
+    if(s.remaining<=0){title='順番に到達';large='病院へ確認';detail='現在の番号が自分の番号に達しています。';panel.className='banner error';}
+    else if(s.until_departure_minutes<=0){title='出発目安';large='出発推奨';detail='予測から計算した出発余裕がありません。';panel.className='banner error';}
+    else if(s.until_departure_minutes<=10){title='そろそろ出発';large=`あと約${s.until_departure_minutes}分`;detail='準備を始めてください。';panel.className='banner warning';}
+    else{title='自宅待機の目安';large=`あと約${s.until_departure_minutes}分`;detail='診察進行が変わると再計算します。';panel.className='banner';}
+    detail+=s.pace_observed?'（進行履歴に基づく予測）':'（暫定的な1番号あたりの時間で計算）';
+  }
+  panel.replaceChildren();const h=document.createElement('h3');h.textContent=title;const b=document.createElement('div');b.className='big';b.textContent=large;const p=document.createElement('p');p.textContent=detail;panel.append(h,b,p);
+  if(s.last_error)showMessage('病院サイトの取得エラー：'+s.last_error,'error');
+  else if(s.closed_day)showMessage('休診日制御がONです。病院サイトへの自動取得は停止しています。');
+  else showMessage(c.active?'監視中：iPhoneの画面を閉じてもSupabase Cron側で番号取得します。':'監視停止中：通院日に「監視開始」を押してください。',c.active?'success':'');
+  const url=new URL('https://www.google.com/maps/dir/');url.searchParams.set('api','1');url.searchParams.set('destination','静岡県三島市東本町1-2-17');url.searchParams.set('travelmode','driving');if(c.origin)url.searchParams.set('origin',c.origin);$('maps').href=url.toString();
+  $('trafficInfo').textContent=s.traffic_connected?`交通情報：${s.traffic_updated_at?'最終取得 '+fmt(s.traffic_updated_at):'未取得'}。自動更新は${c.traffic_enabled?'ON':'OFF'}。`:'Google Routes API未設定のため、手入力時間を使用中。';
+  const tbody=$('history');tbody.replaceChildren();
+  if(!info.events.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=3;td.textContent='まだ履歴がありません。';tr.append(td);tbody.append(tr);}
+  info.events.slice().reverse().forEach(e=>{const tr=document.createElement('tr');[fmt(e.at),e.session||'—',e.number+'番'].forEach(t=>{const td=document.createElement('td');td.textContent=String(t);tr.append(td)});tbody.append(tr)});
+}
+async function perform(action,extra={},message=''){try{
+  const r=await call(action,extra);info=r;applySettings(r.settings);render();if(message)showConnect(message,'success');
+  if(r.result?.error)showMessage('取得失敗：'+r.result.error,'error');
+  if(r.result?.reason==='rate_limited')showMessage('最短取得間隔のため、次回取得可能時刻まで待機します。');
+  if(r.result?.reason==='closed_day')showMessage('木曜日・日曜日は取得を停止します。');
+  return r;
+}catch(e){showConnect('処理できません：'+(e.message||e),'error');return null;}}
+$('connectButton').onclick=async()=>{const r=await perform('status',{},'Supabaseへの接続を確認できました。');if(r)showConnect('接続成功。診察番号の取得は「監視開始」で行います。','success')};
+$('disconnectButton').onclick=()=>{sessionStorage.removeItem('clinic_app_code');localStorage.removeItem('clinic_project_url');$('appCode').value='';$('projectURL').value='';connected=false;info=null;showConnect('接続情報を消去しました。');showMessage('接続情報がありません。');};
+$('saveMain').onclick=async()=>{try{await perform('save',{settings:values()},'設定を保存しました。')}catch(e){showConnect(e.message,'error')}};
+$('saveCycles').onclick=$('saveMain').onclick;
+$('saveTraffic').onclick=$('saveMain').onclick;
+$('start').onclick=async()=>{try{const v=values();const s=await perform('save',{settings:v});if(s)await perform('start',{},'監視を開始しました。')}catch(e){showConnect(e.message,'error')}};
+$('stop').onclick=()=>perform('stop',{},'監視を停止しました。');
+$('refresh').onclick=()=>perform('fetch',{},'診察情報の取得を要求しました。');
+$('route').onclick=async()=>{const v=values();const r=await perform('save',{settings:v});if(r){const x=await perform('route',{},'交通情報の取得を要求しました。');if(x?.result?.error)showMessage(x.result.error,'error')}};
+$('geo').onclick=()=>{if(!navigator.geolocation){showConnect('位置情報に対応していません。','error');return;}
+ navigator.geolocation.getCurrentPosition(p=>{$('origin').value=p.coords.latitude.toFixed(6)+','+p.coords.longitude.toFixed(6);showConnect('現在地を入力しました。設定を保存してください。','success')},e=>showConnect('位置情報の取得に失敗：'+e.message,'error'),{timeout:10000,maximumAge:60000});};
+loadConnection();if($('projectURL').value&&$('appCode').value)perform('status');
+setInterval(async()=>{if(document.visibilityState==='visible'&&!busy&&connected){const r=await perform('status');if(!r)connected=false}},45000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&connected&&!busy)perform('status')});
+})();
+</script>
+</body></html>
