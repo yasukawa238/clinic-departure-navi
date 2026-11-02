@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#14263C">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>診察出発ナビ V0.2.1</title>
+<title>診察出発ナビ V0.2.2</title>
 <style>
 :root{--ink:#14263c;--muted:#5e7183;--bg:#f3f6fa;--line:#dce5ee;--accent:#1f6de2;--green:#117b58;--orange:#ae6a05;--red:#c23939}
 *{box-sizing:border-box}body{margin:0;padding:0 0 calc(32px + env(safe-area-inset-bottom));font:15px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:var(--ink);background:var(--bg)}
@@ -33,7 +33,7 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 </style>
 </head>
 <body>
-<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.2.1</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
+<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.2.2</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
 <main>
 <section class="card" id="connectCard">
   <h2>Supabaseへの接続</h2>
@@ -104,6 +104,8 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 <section class="card">
   <details><summary>渋滞連携（Google Routes API・任意）</summary>
     <label class="toggle">渋滞込み時間を自動更新<input id="traffic_enabled" type="checkbox"></label>
+    <label class="toggle">自動更新の診療日・時間帯制限（新機能）<input id="traffic_schedule_guard" type="checkbox" checked></label>
+    <p class="help">ON：木・日、土曜午後、診療区分外、監視日以外には自動取得しません。午前7:00～15:00、午後14:00～19:00が暫定的な自動取得可能時間です。祝日・臨時休診は未判定です。OFF：V0.2.1と同じ自動更新条件に戻ります。手動更新・経路診断は制限対象外です。</p>
     <p class="help">Supabase側に `GOOGLE_ROUTES_API_KEY` を設定してから利用できます。更新は10分以上間隔を空けます。API課金が発生する場合があります。</p>
     <div class="actions"><button id="saveTraffic">設定を保存</button><button class="secondary" id="route">所要時間を更新</button></div>
     <p id="trafficInfo" class="help">API未設定時は手入力値を使用します。</p>
@@ -127,8 +129,8 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
-const fields=['target_session','session_guard','my_number','driving_minutes','margin_minutes','fallback_pace','origin','adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled','normal_cycle','mid_cycle','near_cycle','middle_threshold','near_threshold','departure_threshold'];
-const checkbox=new Set(['adaptive_numbers','adaptive_departure','closed_day_guard','session_guard','traffic_enabled']);
+const fields=['target_session','session_guard','my_number','driving_minutes','margin_minutes','fallback_pace','origin','adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled','traffic_schedule_guard','normal_cycle','mid_cycle','near_cycle','middle_threshold','near_threshold','departure_threshold'];
+const checkbox=new Set(['adaptive_numbers','adaptive_departure','closed_day_guard','session_guard','traffic_enabled','traffic_schedule_guard']);
 let info=null,busy=false,connected=false;
 const fmt=val=>val?new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(val)):'—';
 const timestamp=minutes=>fmt(new Date(Date.now()+minutes*60000));
@@ -195,7 +197,21 @@ function render(){if(!info)return;
   else if(s.closed_day||s.session_closed)showMessage('休診日制御がONです。病院サイトへの自動取得は停止しています。');
   else showMessage(c.active?'監視中：iPhoneの画面を閉じてもSupabase Cron側で番号取得します。':'監視停止中：通院日に「監視開始」を押してください。',c.active?'success':'');
   const url=new URL('https://www.google.com/maps/dir/');url.searchParams.set('api','1');url.searchParams.set('destination','静岡県三島市東本町1-2-17');url.searchParams.set('travelmode','driving');if(c.origin)url.searchParams.set('origin',c.origin);$('maps').href=url.toString();
-  $('trafficInfo').textContent=s.traffic_connected?`交通情報：${s.traffic_updated_at?'最終取得 '+fmt(s.traffic_updated_at):'未取得'}。自動更新は${c.traffic_enabled?'ON':'OFF'}。`:'Google Routes API未設定のため、手入力時間を使用中。';
+  const trafficEl=$('trafficInfo');
+  if(!s.traffic_connected){
+    trafficEl.textContent='Google Routes API未設定。手入力した車移動時間を使用してください。';
+    trafficEl.className='info';
+  }else{
+    const age=s.traffic_age_minutes==null?'未取得':`${s.traffic_age_minutes}分経過`;
+    const base=`交通情報：${s.traffic_updated_at?'最終取得 '+fmt(s.traffic_updated_at):'未取得'}（${age}）。自動更新：${c.traffic_enabled?'ON':'OFF'}。`;
+    if(s.traffic_stale){
+      trafficEl.textContent=base+' 最新の所要時間ではありません。再取得するか、Googleマップで確認して手入力してください。';
+      trafficEl.className='info error';
+    }else{
+      trafficEl.textContent=base+(c.traffic_enabled&&c.traffic_schedule_guard&&!s.traffic_auto_allowed?' 現在は診療日・時間帯制限により自動更新を抑制中。':'');
+      trafficEl.className='info';
+    }
+  }
   const tbody=$('history');tbody.replaceChildren();
   if(!info.events.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=3;td.textContent='まだ履歴がありません。';tr.append(td);tbody.append(tr);}
   info.events.slice().reverse().forEach(e=>{const tr=document.createElement('tr');[fmt(e.at),e.session||'—',e.number+'番'].forEach(t=>{const td=document.createElement('td');td.textContent=String(t);tr.append(td)});tbody.append(tr)});
@@ -219,7 +235,7 @@ $('start').onclick=async()=>{try{const v=values();const s=await perform('save',{
 $('stop').onclick=()=>perform('stop',{},'監視を停止しました。');
 $('refresh').onclick=()=>perform('fetch',{},'診察情報の取得を要求しました。');
 $('route').onclick=async()=>{const v=values();const r=await perform('save',{settings:v});if(r){const x=await perform('route',{},'交通情報の取得を要求しました。');if(x?.result?.error)showMessage(x.result.error,'error')}};
-// V0.2.1: 診断機能は明示的にONにしたときだけ実行可能。DB書き込みなし。
+// V0.2.2: 診断機能は明示的にONにしたときだけ実行可能。DB書き込みなし。
 $('routeDiagnosticEnabled').onchange=()=>{
   const enabled=$('routeDiagnosticEnabled').checked;
   $('routeDiagnose').disabled=!enabled;
@@ -239,7 +255,7 @@ $('routeDiagnose').onclick=async()=>{
     $('routeDiagOutput').textContent=[
       `取得時刻: ${new Date(d.requested_at).toLocaleString('ja-JP')}`,
       `Google所要時間（渋滞込み）: ${f(d.duration_seconds/60)}分（切上げ ${d.duration_minutes}分）`,
-      `渋滞なし参考時間: ${d.static_duration_seconds==null?'取得なし':f(d.static_duration_seconds/60)+'分'}`,
+      `リアルタイム交通未考慮の参考時間: ${d.static_duration_seconds==null?'取得なし':f(d.static_duration_seconds/60)+'分'}`,
       `Google算出距離: ${d.distance_meters==null?'取得なし':f(d.distance_meters/1000)+' km'}`,
       `リクエスト出発地: ${d.requested_origin}`,
       `リクエスト目的地: ${d.requested_destination}`,
