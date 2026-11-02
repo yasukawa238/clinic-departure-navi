@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#14263C">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>診察出発ナビ V0.1</title>
+<title>診察出発ナビ V0.2</title>
 <style>
 :root{--ink:#14263c;--muted:#5e7183;--bg:#f3f6fa;--line:#dce5ee;--accent:#1f6de2;--green:#117b58;--orange:#ae6a05;--red:#c23939}
 *{box-sizing:border-box}body{margin:0;padding:0 0 calc(32px + env(safe-area-inset-bottom));font:15px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:var(--ink);background:var(--bg)}
@@ -33,7 +33,7 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 </style>
 </head>
 <body>
-<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.1</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
+<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.2</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
 <main>
 <section class="card" id="connectCard">
   <h2>Supabaseへの接続</h2>
@@ -48,6 +48,7 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 </section>
 <section class="card">
   <div class="heading"><h2 style="margin:0">診察状況</h2><span id="pill" class="pill">未接続</span></div>
+  <p class="help" id="targetSessionInfo">対象診療：未設定</p>
   <p class="help" id="dataTimes">最終取得：— ／ 病院側の情報時刻：—</p>
   <div class="stats">
     <div class="stat"><span class="name">現在診察中</span><strong id="nowNo">—</strong><span class="unit"> 番</span></div>
@@ -68,6 +69,8 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 <section class="card">
   <details open><summary>受付番号・車移動の設定</summary>
     <div class="fieldgrid">
+      <div><label class="field" for="target_session">自分の診療区分</label>
+        <select id="target_session"><option value="午前">午前</option><option value="午後">午後</option></select></div>
       <div><label class="field" for="my_number">自分の受付番号</label><input type="number" id="my_number" min="1" max="9999" inputmode="numeric"></div>
       <div><label class="field" for="driving_minutes">車の所要時間（分）</label><input type="number" id="driving_minutes" min="1" max="240" inputmode="numeric"></div>
       <div><label class="field" for="margin_minutes">到着余裕時間（分）</label><input type="number" id="margin_minutes" min="0" max="120" inputmode="numeric"></div>
@@ -84,6 +87,8 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
     <label class="toggle">残り番号で周期を短縮<input id="adaptive_numbers" type="checkbox"></label>
     <label class="toggle">出発時刻が近いと周期を短縮<input id="adaptive_departure" type="checkbox"></label>
     <label class="toggle">木曜・日曜は取得しない<input id="closed_day_guard" type="checkbox"></label>
+    <label class="toggle">土曜午後・15時以降の監視を停止<input id="session_guard" type="checkbox"></label>
+    <p class="help">午前・午後の番号は別管理です。午前の診察が12時以降に続く場合も、サイトの診療区分を優先して判定します。祝日・臨時休診は現段階では手動停止してください。土曜午前は12時以降も診察が続く場合に備え、15時を自動取得の暫定停止時刻にします。</p>
     <div class="fieldgrid">
       <div><label class="field" for="normal_cycle">通常周期（分）</label><input id="normal_cycle" type="number" min="3" max="120"></div>
       <div><label class="field" for="mid_cycle">中間周期（分）</label><input id="mid_cycle" type="number" min="3" max="120"></div>
@@ -109,14 +114,14 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
     <div style="overflow:auto"><table><thead><tr><th>取得時刻（JST）</th><th>区分</th><th>番号</th></tr></thead><tbody id="history"><tr><td colspan="3">まだデータがありません。</td></tr></tbody></table></div>
   </details>
 </section>
-<p class="help">非公式の診察予測補助ツールです。病院公式の呼出案内が優先されます。診察の進行や交通状況が変化するため、表示時刻は保証されません。V0.1ではiPhoneへのPush通知は未実装です。</p>
+<p class="help">非公式の診察予測補助ツールです。病院公式の呼出案内が優先されます。診察の進行や交通状況が変化するため、表示時刻は保証されません。V0.2ではiPhoneへのPush通知は未実装です。</p>
 </main>
 <script>
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
-const fields=['my_number','driving_minutes','margin_minutes','fallback_pace','origin','adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled','normal_cycle','mid_cycle','near_cycle','middle_threshold','near_threshold','departure_threshold'];
-const checkbox=new Set(['adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled']);
+const fields=['target_session','session_guard','my_number','driving_minutes','margin_minutes','fallback_pace','origin','adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled','normal_cycle','mid_cycle','near_cycle','middle_threshold','near_threshold','departure_threshold'];
+const checkbox=new Set(['adaptive_numbers','adaptive_departure','closed_day_guard','session_guard','traffic_enabled']);
 let info=null,busy=false,connected=false;
 const fmt=val=>val?new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(val)):'—';
 const timestamp=minutes=>fmt(new Date(Date.now()+minutes*60000));
@@ -148,7 +153,7 @@ function applySettings(c){fields.forEach(k=>{if(Object.hasOwn(c,k)){
 }});}
 function values(){const o={};fields.forEach(k=>{
   if(checkbox.has(k))o[k]=$(k).checked;
-  else if(k==='origin')o[k]=$(k).value.trim();
+  else if(k==='origin'||k==='target_session')o[k]=$(k).value.trim();
   else if(k==='my_number')o[k]=$(k).value?Number($(k).value):null;
   else o[k]=Number($(k).value);
 });
@@ -156,8 +161,9 @@ if(o.near_threshold>=o.middle_threshold)throw Error('最短周期への切替番
 return o;}
 function render(){if(!info)return;
   const c=info.settings,s=info.status;
-  $('pill').className='pill '+(s.closed_day?'warning':s.stale||s.last_error?'error':c.active?'success':'');
-  $('pill').textContent=s.closed_day?'休診日':s.stale?'情報が古い':c.active?'監視中':'監視停止';
+  $('pill').className='pill '+(s.closed_day||s.session_closed?'warning':s.stale||s.last_error?'error':c.active?'success':'');
+  $('pill').textContent=s.closed_day||s.session_closed?'休診日':s.stale?'情報が古い':c.active?'監視中':'監視停止';
+  $('targetSessionInfo').textContent=`対象：${c.target_session||'未設定'} ／ 病院表示：${s.source_session||'未取得'}（診療区分が違う場合は予測しません）`;
   $('nowNo').textContent=s.current_number??'—'; $('gapNo').textContent=s.remaining??'—';
   $('dataTimes').textContent=`最終取得：${fmt(s.last_success_at)} ／ 病院側の情報時刻：${s.source_time||'不明'} ／ ${s.source_session||'区分不明'}`;
   $('drive').textContent=`${c.driving_minutes}分`;
@@ -167,7 +173,8 @@ function render(){if(!info)return;
   $('nextUpdate').textContent=s.next_fetch_after?`次回取得可能：${fmt(s.next_fetch_after)}（病院へのアクセスは3分以上間隔を空けます）`:'初回取得待ち';
   const panel=$('departure');panel.className='banner neutral';
   let title='設定待ち',large='—',detail='自分の受付番号を設定し、監視を開始してください。';
-  if(s.closed_day){title='休診日';large='取得停止';detail='木曜日・日曜日は病院サイトを取得しません。';panel.className='banner neutral';}
+  if(s.closed_day||s.session_closed){title='休診日・診療時間外';large='取得停止';detail='木・日曜、土曜午後、土曜15:00以降の自動取得を停止します。';panel.className='banner neutral';}
+  else if(!s.session_match){title='対象区分の情報待ち';large='予測停止';detail=`${c.target_session}の診察番号が確認できるまで待機します。別区分の番号は使用しません。`;panel.className='banner neutral';}
   else if(s.stale||s.last_error){title='取得状態を確認';large='予測の信頼性低下';detail='病院公式サイトで現在の番号を確認してください。';panel.className='banner error';}
   else if(s.remaining!==null){
     if(s.remaining<=0){title='順番に到達';large='病院へ確認';detail='現在の番号が自分の番号に達しています。';panel.className='banner error';}
@@ -178,7 +185,7 @@ function render(){if(!info)return;
   }
   panel.replaceChildren();const h=document.createElement('h3');h.textContent=title;const b=document.createElement('div');b.className='big';b.textContent=large;const p=document.createElement('p');p.textContent=detail;panel.append(h,b,p);
   if(s.last_error)showMessage('病院サイトの取得エラー：'+s.last_error,'error');
-  else if(s.closed_day)showMessage('休診日制御がONです。病院サイトへの自動取得は停止しています。');
+  else if(s.closed_day||s.session_closed)showMessage('休診日制御がONです。病院サイトへの自動取得は停止しています。');
   else showMessage(c.active?'監視中：iPhoneの画面を閉じてもSupabase Cron側で番号取得します。':'監視停止中：通院日に「監視開始」を押してください。',c.active?'success':'');
   const url=new URL('https://www.google.com/maps/dir/');url.searchParams.set('api','1');url.searchParams.set('destination','静岡県三島市東本町1-2-17');url.searchParams.set('travelmode','driving');if(c.origin)url.searchParams.set('origin',c.origin);$('maps').href=url.toString();
   $('trafficInfo').textContent=s.traffic_connected?`交通情報：${s.traffic_updated_at?'最終取得 '+fmt(s.traffic_updated_at):'未取得'}。自動更新は${c.traffic_enabled?'ON':'OFF'}。`:'Google Routes API未設定のため、手入力時間を使用中。';
@@ -190,9 +197,12 @@ async function perform(action,extra={},message=''){try{
   const r=await call(action,extra);info=r;applySettings(r.settings);render();if(message)showConnect(message,'success');
   if(r.result?.error)showMessage('取得失敗：'+r.result.error,'error');
   if(r.result?.reason==='rate_limited')showMessage('最短取得間隔のため、次回取得可能時刻まで待機します。');
-  if(r.result?.reason==='closed_day')showMessage('木曜日・日曜日は取得を停止します。');
+  if(r.result?.reason==='closed_day'||r.result?.reason==='session_closed')showMessage('休診日のため取得を停止します。');
+  if(r.result?.reason==='different_session')showMessage(`病院側は${r.result.observed_session}診療です。対象の${r.result.target_session}と異なるため、番号を予測に使用しません。`);
+  if(r.result?.reason==='session_finished')showMessage('病院表示が午後に切り替わりました。午前の監視を停止しました。','success');
   return r;
 }catch(e){showConnect('処理できません：'+(e.message||e),'error');return null;}}
+$('target_session').addEventListener('change',()=>{ $('my_number').value=''; showConnect('診療区分を変更しました。新しい区分の受付番号を入力し、設定を保存してから監視を開始してください。'); });
 $('connectButton').onclick=async()=>{const r=await perform('status',{},'Supabaseへの接続を確認できました。');if(r)showConnect('接続成功。診察番号の取得は「監視開始」で行います。','success')};
 $('disconnectButton').onclick=()=>{sessionStorage.removeItem('clinic_app_code');localStorage.removeItem('clinic_project_url');$('appCode').value='';$('projectURL').value='';connected=false;info=null;showConnect('接続情報を消去しました。');showMessage('接続情報がありません。');};
 $('saveMain').onclick=async()=>{try{await perform('save',{settings:values()},'設定を保存しました。')}catch(e){showConnect(e.message,'error')}};
