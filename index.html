@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#14263C">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>診察出発ナビ V0.2</title>
+<title>診察出発ナビ V0.2.1</title>
 <style>
 :root{--ink:#14263c;--muted:#5e7183;--bg:#f3f6fa;--line:#dce5ee;--accent:#1f6de2;--green:#117b58;--orange:#ae6a05;--red:#c23939}
 *{box-sizing:border-box}body{margin:0;padding:0 0 calc(32px + env(safe-area-inset-bottom));font:15px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:var(--ink);background:var(--bg)}
@@ -33,7 +33,7 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 </style>
 </head>
 <body>
-<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.2</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
+<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.2.1</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
 <main>
 <section class="card" id="connectCard">
   <h2>Supabaseへの接続</h2>
@@ -107,6 +107,13 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
     <p class="help">Supabase側に `GOOGLE_ROUTES_API_KEY` を設定してから利用できます。更新は10分以上間隔を空けます。API課金が発生する場合があります。</p>
     <div class="actions"><button id="saveTraffic">設定を保存</button><button class="secondary" id="route">所要時間を更新</button></div>
     <p id="trafficInfo" class="help">API未設定時は手入力値を使用します。</p>
+    <div style="border-top:1px solid var(--line);margin-top:16px;padding-top:12px">
+      <label class="toggle">経路診断モード（通常OFF）<input id="routeDiagnosticEnabled" type="checkbox"></label>
+      <p class="help">手動で1回だけGoogleに問い合わせ、距離・渋滞込み時間・参考時間・経路始終点を表示します。既存の車移動時間は上書きしません。API呼び出し1回分の利用になります。</p>
+      <div class="actions"><button class="secondary" id="routeDiagnose" disabled>経路を診断（値は保存しない）</button></div>
+      <pre id="routeDiagOutput" style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6" aria-live="polite">診断モードOFF</pre>
+    </div>
+
   </details>
 </section>
 <section class="card">
@@ -212,6 +219,37 @@ $('start').onclick=async()=>{try{const v=values();const s=await perform('save',{
 $('stop').onclick=()=>perform('stop',{},'監視を停止しました。');
 $('refresh').onclick=()=>perform('fetch',{},'診察情報の取得を要求しました。');
 $('route').onclick=async()=>{const v=values();const r=await perform('save',{settings:v});if(r){const x=await perform('route',{},'交通情報の取得を要求しました。');if(x?.result?.error)showMessage(x.result.error,'error')}};
+// V0.2.1: 診断機能は明示的にONにしたときだけ実行可能。DB書き込みなし。
+$('routeDiagnosticEnabled').onchange=()=>{
+  const enabled=$('routeDiagnosticEnabled').checked;
+  $('routeDiagnose').disabled=!enabled;
+  $('routeDiagOutput').textContent=enabled?'診断の準備ができました。出発地を保存してから診断してください。':'診断モードOFF';
+};
+$('routeDiagnose').onclick=async()=>{
+  if(!$('routeDiagnosticEnabled').checked)return;
+  $('routeDiagnose').disabled=true;
+  $('routeDiagOutput').textContent='経路を調査中（既存設定は変更しません）…';
+  try{
+    // perform() は診断レスポンスを通常の画面設定と誤認するため使用しない。
+    const r=await call('route_diagnose');
+    const d=r.diagnostic;
+    if(!d)throw Error('診断結果がありません');
+    const f=(x)=>Number.isFinite(x)?Number(x).toFixed(1):'取得なし';
+    const p=(x)=>x?`${x.latitude}, ${x.longitude}`:'取得なし';
+    $('routeDiagOutput').textContent=[
+      `取得時刻: ${new Date(d.requested_at).toLocaleString('ja-JP')}`,
+      `Google所要時間（渋滞込み）: ${f(d.duration_seconds/60)}分（切上げ ${d.duration_minutes}分）`,
+      `渋滞なし参考時間: ${d.static_duration_seconds==null?'取得なし':f(d.static_duration_seconds/60)+'分'}`,
+      `Google算出距離: ${d.distance_meters==null?'取得なし':f(d.distance_meters/1000)+' km'}`,
+      `リクエスト出発地: ${d.requested_origin}`,
+      `リクエスト目的地: ${d.requested_destination}`,
+      `実際のルート始点: ${p(d.snapped_start)}`,
+      `実際のルート終点: ${p(d.snapped_end)}`,
+      `車移動時間への反映: なし（診断専用）`
+    ].join('\n');
+  }catch(e){$('routeDiagOutput').textContent='診断失敗: '+String(e.message||e)}
+  finally{$('routeDiagnose').disabled=!$('routeDiagnosticEnabled').checked;}
+};
 $('geo').onclick=()=>{if(!navigator.geolocation){showConnect('位置情報に対応していません。','error');return;}
  navigator.geolocation.getCurrentPosition(p=>{$('origin').value=p.coords.latitude.toFixed(6)+','+p.coords.longitude.toFixed(6);showConnect('現在地を入力しました。設定を保存してください。','success')},e=>showConnect('位置情報の取得に失敗：'+e.message,'error'),{timeout:10000,maximumAge:60000});};
 loadConnection();if($('projectURL').value&&$('appCode').value)perform('status');
