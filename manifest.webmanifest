@@ -1,0 +1,26 @@
+{
+  "id": "/clinic-departure-navi/",
+  "name": "診察出発ナビ",
+  "short_name": "診察ナビ",
+  "description": "診察進行と車移動を組み合わせる出発時刻の補助ツール",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f6fa",
+  "theme_color": "#14263c",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

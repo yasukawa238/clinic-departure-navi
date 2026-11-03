@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#14263C">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<title>診察出発ナビ V0.2.2</title>
+<title>診察出発ナビ V0.3.0</title>
 <style>
 :root{--ink:#14263c;--muted:#5e7183;--bg:#f3f6fa;--line:#dce5ee;--accent:#1f6de2;--green:#117b58;--orange:#ae6a05;--red:#c23939}
 *{box-sizing:border-box}body{margin:0;padding:0 0 calc(32px + env(safe-area-inset-bottom));font:15px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:var(--ink);background:var(--bg)}
@@ -33,7 +35,7 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 </style>
 </head>
 <body>
-<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.2.2</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
+<header><h1>診察出発ナビ <span style="font-size:12px;color:#bed5ff">V0.3.0</span></h1><p class="subtitle">皮フ科玉森クリニック / 診察進行 × 車移動</p></header>
 <main>
 <section class="card" id="connectCard">
   <h2>Supabaseへの接続</h2>
@@ -118,19 +120,34 @@ details{margin:0}summary{cursor:pointer;min-height:36px;font-weight:750}a{color:
 
   </details>
 </section>
+<section class="card" id="pushCard">
+  <details open><summary>iPhoneへの出発通知（新機能・初期OFF）</summary>
+    <p class="help">ロック画面への通知には、ホーム画面からWebアプリを起動し、通知を許可する必要があります。監視OFFのままテスト通知を送れます。</p>
+    <label class="toggle">自動出発通知を有効にする（初期OFF）<input id="push_enabled" type="checkbox"></label>
+    <label class="toggle">出発前の準備通知<input id="push_early_enabled" type="checkbox" checked></label>
+    <label class="toggle">出発時刻の通知<input id="push_depart_enabled" type="checkbox" checked></label>
+    <label class="field" for="push_lead_minutes">準備通知：出発何分前（1〜30分）</label>
+    <input id="push_lead_minutes" type="number" min="1" max="30" step="1" value="10">
+    <div class="actions"><button id="savePush">通知設定を保存</button></div>
+    <p class="help">通知機能をONにしても診察番号の監視がOFFなら自動送信しません。診療区分不一致・情報が古い場合も自動通知を抑制します。</p>
+    <div class="actions"><button class="secondary" id="pushRegister">このiPhoneで通知を許可・登録</button><button class="secondary" id="pushTest">テスト通知を1回送る</button><button class="danger" id="pushUnregister">この端末の通知登録を解除</button></div>
+    <div id="pushResult" class="info">ホーム画面に追加したWebアプリから接続し、通知登録してください。テスト中は自動出発通知をOFFにします。</div>
+    <p class="help">テスト通知は60秒間隔です。通知が届かない・遅れる場合があります。出発判断は病院公式案内と併用してください。</p>
+  </details>
+</section>
 <section class="card">
   <details><summary>診察番号の履歴</summary>
     <div style="overflow:auto"><table><thead><tr><th>取得時刻（JST）</th><th>区分</th><th>番号</th></tr></thead><tbody id="history"><tr><td colspan="3">まだデータがありません。</td></tr></tbody></table></div>
   </details>
 </section>
-<p class="help">非公式の診察予測補助ツールです。病院公式の呼出案内が優先されます。診察の進行や交通状況が変化するため、表示時刻は保証されません。V0.2ではiPhoneへのPush通知は未実装です。</p>
+<p class="help">非公式の診察予測補助ツールです。病院公式の呼出案内が優先されます。診察の進行や交通状況が変化するため、表示時刻は保証されません。iPhone通知はユーザーの許可と端末・ネットワーク条件に依存し、到達時刻を保証しません。</p>
 </main>
 <script>
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
-const fields=['target_session','session_guard','my_number','driving_minutes','margin_minutes','fallback_pace','origin','adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled','traffic_schedule_guard','normal_cycle','mid_cycle','near_cycle','middle_threshold','near_threshold','departure_threshold'];
-const checkbox=new Set(['adaptive_numbers','adaptive_departure','closed_day_guard','session_guard','traffic_enabled','traffic_schedule_guard']);
+const fields=['target_session','session_guard','my_number','driving_minutes','margin_minutes','fallback_pace','origin','adaptive_numbers','adaptive_departure','closed_day_guard','traffic_enabled','traffic_schedule_guard','push_enabled','push_early_enabled','push_depart_enabled','push_lead_minutes','normal_cycle','mid_cycle','near_cycle','middle_threshold','near_threshold','departure_threshold'];
+const checkbox=new Set(['adaptive_numbers','adaptive_departure','closed_day_guard','session_guard','traffic_enabled','traffic_schedule_guard','push_enabled','push_early_enabled','push_depart_enabled']);
 let info=null,busy=false,connected=false;
 const fmt=val=>val?new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(val)):'—';
 const timestamp=minutes=>fmt(new Date(Date.now()+minutes*60000));
@@ -212,6 +229,11 @@ function render(){if(!info)return;
       trafficEl.className='info';
     }
   }
+  if(s.push_configured){
+    if(!$('pushResult').dataset.touched) $('pushResult').textContent='通知サーバー：設定済み。iPhoneのホーム画面アプリから通知登録・テストしてください。';
+  }else if(!$('pushResult').dataset.touched){
+    $('pushResult').textContent='通知サーバー：VAPID Secrets未設定。通知の登録と送信はまだ利用できません。';
+  }
   const tbody=$('history');tbody.replaceChildren();
   if(!info.events.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=3;td.textContent='まだ履歴がありません。';tr.append(td);tbody.append(tr);}
   info.events.slice().reverse().forEach(e=>{const tr=document.createElement('tr');[fmt(e.at),e.session||'—',e.number+'番'].forEach(t=>{const td=document.createElement('td');td.textContent=String(t);tr.append(td)});tbody.append(tr)});
@@ -231,11 +253,12 @@ $('disconnectButton').onclick=()=>{sessionStorage.removeItem('clinic_app_code');
 $('saveMain').onclick=async()=>{try{await perform('save',{settings:values()},'設定を保存しました。')}catch(e){showConnect(e.message,'error')}};
 $('saveCycles').onclick=$('saveMain').onclick;
 $('saveTraffic').onclick=$('saveMain').onclick;
+$('savePush').onclick=$('saveMain').onclick;
 $('start').onclick=async()=>{try{const v=values();const s=await perform('save',{settings:v});if(s)await perform('start',{},'監視を開始しました。')}catch(e){showConnect(e.message,'error')}};
 $('stop').onclick=()=>perform('stop',{},'監視を停止しました。');
 $('refresh').onclick=()=>perform('fetch',{},'診察情報の取得を要求しました。');
 $('route').onclick=async()=>{const v=values();const r=await perform('save',{settings:v});if(r){const x=await perform('route',{},'交通情報の取得を要求しました。');if(x?.result?.error)showMessage(x.result.error,'error')}};
-// V0.2.2: 診断機能は明示的にONにしたときだけ実行可能。DB書き込みなし。
+// V0.3.0: 診断機能は明示的にONにしたときだけ実行可能。DB書き込みなし。
 $('routeDiagnosticEnabled').onchange=()=>{
   const enabled=$('routeDiagnosticEnabled').checked;
   $('routeDiagnose').disabled=!enabled;
@@ -268,6 +291,71 @@ $('routeDiagnose').onclick=async()=>{
 };
 $('geo').onclick=()=>{if(!navigator.geolocation){showConnect('位置情報に対応していません。','error');return;}
  navigator.geolocation.getCurrentPosition(p=>{$('origin').value=p.coords.latitude.toFixed(6)+','+p.coords.longitude.toFixed(6);showConnect('現在地を入力しました。設定を保存してください。','success')},e=>showConnect('位置情報の取得に失敗：'+e.message,'error'),{timeout:10000,maximumAge:60000});};
+
+// V0.3.0 Web Push: separate from clinic number/traffic settings.
+// Registration happens on initial page load; subscribe() ONLY in a real click handler.
+let swReady = null;
+if('serviceWorker' in navigator) {
+  swReady = navigator.serviceWorker.register('./sw.js',{scope:'./'}).then(()=>navigator.serviceWorker.ready).catch(()=>null);
+}
+function pushFeedback(message, error=false){
+  $('pushResult').dataset.touched='1';
+  $('pushResult').className='info'+(error?' error':' success');
+  $('pushResult').textContent=message;
+}
+function isHomeScreenApp(){return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;}
+function urlKeyBytes(str){
+  const b64=str.replace(/-/g,'+').replace(/_/g,'/');const padded=b64+'='.repeat((4-b64.length%4)%4);
+  return Uint8Array.from(atob(padded),c=>c.charCodeAt(0));
+}
+async function localPushSubscription(){
+  const reg=await swReady;
+  if(!reg||!('pushManager' in reg))throw Error('この環境はWeb Pushに対応していません');
+  const sub=await reg.pushManager.getSubscription();
+  if(!sub)throw Error('まだ通知登録されていません');
+  return sub;
+}
+$('pushRegister').onclick=async()=>{
+  // On iPhone, Home Screen web app + user gesture are mandatory.
+  if(!isHomeScreenApp()){
+    pushFeedback('iPhoneではSafariから「ホーム画面に追加」し、そのアイコンから起動してください。通常のSafariタブでは通知登録できません。',true);return;
+  }
+  if(!swReady || !('Notification' in window)){
+    pushFeedback('この環境はWeb Pushに対応していません。',true);return;
+  }
+  if(!info?.status?.push_configured || !info.status.push_public_key){
+    pushFeedback('Supabaseの通知用Secretsを設定し、再接続してください。',true);return;
+  }
+  try{
+    if(Notification.permission==='denied')throw Error('iPhoneの設定からこのWebアプリの通知を許可してください');
+    // Request permission directly from the button gesture.
+    const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission();
+    if(permission!=='granted')throw Error('通知が許可されていません');
+    const reg=await swReady;
+    if(!reg)throw Error('Service Workerの登録に失敗しました');
+    const key=urlKeyBytes(info.status.push_public_key);
+    let subscription=await reg.pushManager.getSubscription();
+    if(!subscription)subscription=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
+    await call('push_register',{subscription:subscription.toJSON()});
+    pushFeedback('このiPhoneの通知登録が完了しました。次に「テスト通知を1回送る」を押してください。');
+  }catch(e){pushFeedback('通知登録エラー：'+String(e.message||e),true);}
+};
+$('pushTest').onclick=async()=>{
+  try{
+    const subscription=await localPushSubscription();
+    await call('push_test',{subscription:subscription.toJSON()});
+    pushFeedback('テスト送信リクエストがPushサービスに受け付けられました。iPhoneロック画面に届くか確認してください（到達保証ではありません）。');
+  }catch(e){pushFeedback('テスト送信エラー：'+String(e.message||e),true);}
+};
+$('pushUnregister').onclick=async()=>{
+  try{
+    const subscription=await localPushSubscription();
+    await call('push_unregister',{subscription:subscription.toJSON()});
+    await subscription.unsubscribe();
+    pushFeedback('この端末の通知登録を解除しました。サーバーの自動通知スイッチは別設定です。');
+  }catch(e){pushFeedback('登録解除エラー：'+String(e.message||e),true);}
+};
+
 loadConnection();if($('projectURL').value&&$('appCode').value)perform('status');
 setInterval(async()=>{if(document.visibilityState==='visible'&&!busy&&connected){const r=await perform('status');if(!r)connected=false}},45000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&connected&&!busy)perform('status')});
